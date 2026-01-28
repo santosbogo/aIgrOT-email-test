@@ -165,7 +165,7 @@ export default async function handler(req, res) {
   }),
   resendPapa.emails.send({
     from: "onboarding@resend.dev",
-    to: ["EMAIL_PAPA@DOMINIO.COM"],
+    to: ["tomasbogo@gmail.com"],
     subject,
     html,
   }),
