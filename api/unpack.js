@@ -73,14 +73,14 @@ function unpackPacket(hex) {
     let o = 0;
     const sequence_number = buf.readUInt32LE(o); o += 4;
     const time = buf.readUInt32LE(o); o += 4;
-    const has_water = buf.readUInt8(o) !== 0; o += 1;
+    const alert_status = buf.readUInt8(o) !== 0; o += 1;
 
     return {
       Type: "Alert uplink",
       "Sequence Number": sequence_number,
       "Time (epoch s)": time,
       "Time (UTC)": toUtcString(time),
-      "Has Water": has_water,
+      "Alert Status": alert_status,
     };
   }
 
