@@ -1,6 +1,7 @@
 import { Resend } from "resend";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
+const resendPapa = new Resend(process.env.RESEND_API_KEY_PAPA);
 
 function isHexString(s) {
   return typeof s === "string" && s.length % 2 === 0 && /^[0-9a-fA-F]+$/.test(s);
@@ -155,22 +156,33 @@ export default async function handler(req, res) {
     const { subject, html } = buildEmail({ receivedUtc, messageUtc, unpacked });
 
     // Envío
-    const emailResult = await resend.emails.send({
-      from: "onboarding@resend.dev",
-      to: ["santosbogo@gmail.com"],
-      subject,
-      html,
-    });
+    const [emailMain, emailPapa] = await Promise.all([
+  resend.emails.send({
+    from: "onboarding@resend.dev",
+    to: ["santosbogo@gmail.com"],
+    subject,
+    html,
+  }),
+  resendPapa.emails.send({
+    from: "onboarding@resend.dev",
+    to: ["EMAIL_PAPA@DOMINIO.COM"],
+    subject,
+    html,
+  }),
+]);
 
     // Respuesta del endpoint (incluye lo desempaquetado y el email)
     return res.status(200).json({
-      "Horario de recepción (UTC)": receivedUtc,
-      ...(terminalId ? { TerminalId: terminalId } : {}),
-      subject,
-      "Horario del mensaje (UTC)": messageUtc,
-      unpacked,
-      resend: emailResult,
-    });
+  "Horario de recepción (UTC)": receivedUtc,
+  ...(terminalId ? { TerminalId: terminalId } : {}),
+  subject,
+  "Horario del mensaje (UTC)": messageUtc,
+  unpacked,
+  resend: {
+    main: emailMain,
+    papa: emailPapa,
+  },
+});
   } catch (e) {
     return res.status(e.statusCode || 500).json({ error: e.message || "Internal error" });
   }
