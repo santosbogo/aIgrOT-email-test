@@ -1,0 +1,7 @@
+{
+  "name": "email-endpoint",
+  "private": true,
+  "dependencies": {
+    "resend": "^3.0.0"
+  }
+}
