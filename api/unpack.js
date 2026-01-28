@@ -34,7 +34,7 @@ function unpackPacket(hex) {
   // - ALERT: 9 bytes
   //
   // Si tus tamaños reales difieren, decime el largo real de cada mensaje y lo ajusto.
-  const MESSAGE_SIZE_FULL = 19;
+  const MESSAGE_SIZE_FULL = 21;
   const MESSAGE_SIZE_ALERT = 9;
 
   if (buf.length === MESSAGE_SIZE_FULL) {
