@@ -157,7 +157,7 @@ export default async function handler(req, res) {
     // Envío
     const emailResult = await resend.emails.send({
       from: "onboarding@resend.dev",
-      to: ["santosbogo@gmail.com"],
+      to: ["santosbogo@gmail.com", "tomasbogo@gmail.com"],
       subject,
       html,
     });
