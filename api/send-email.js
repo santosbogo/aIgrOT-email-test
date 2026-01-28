@@ -1,7 +1,10 @@
 import { Resend } from "resend";
 
+// Resend clients (dos cuentas)
 const resend = new Resend(process.env.RESEND_API_KEY);
 const resendPapa = new Resend(process.env.RESEND_API_KEY_PAPA);
+
+/* ===================== HELPERS ===================== */
 
 function isHexString(s) {
   return typeof s === "string" && s.length % 2 === 0 && /^[0-9a-fA-F]+$/.test(s);
@@ -19,6 +22,8 @@ function utcFromSeconds(epochSeconds) {
   return utcFromMs(epochSeconds * 1000);
 }
 
+/* ===================== UNPACK ===================== */
+
 function unpackPacket(hex) {
   if (!isHexString(hex)) {
     const err = new Error("Invalid hex string in Packets[0].Value.");
@@ -34,7 +39,7 @@ function unpackPacket(hex) {
   if (buf.length === MESSAGE_SIZE_FULL) {
     let o = 0;
     const sequence_number = buf.readUInt32LE(o); o += 4;
-    const time = buf.readUInt32LE(o); o += 4; // device time (epoch s)
+    const time = buf.readUInt32LE(o); o += 4;
     const latitude = buf.readInt32LE(o); o += 4;
     const longitude = buf.readInt32LE(o); o += 4;
     const elevation = buf.readInt16LE(o); o += 2;
@@ -56,7 +61,7 @@ function unpackPacket(hex) {
   if (buf.length === MESSAGE_SIZE_ALERT) {
     let o = 0;
     const sequence_number = buf.readUInt32LE(o); o += 4;
-    const time = buf.readUInt32LE(o); o += 4; // device time (epoch s)
+    const time = buf.readUInt32LE(o); o += 4;
     const alert_status = buf.readUInt8(o) !== 0;
 
     return {
@@ -73,6 +78,8 @@ function unpackPacket(hex) {
   err.statusCode = 400;
   throw err;
 }
+
+/* ===================== WEBHOOK ===================== */
 
 function extractWebhook(body) {
   if (!body || typeof body.Data !== "string") {
@@ -91,17 +98,17 @@ function extractWebhook(body) {
   }
 
   const pkt = parsed?.Packets?.[0];
-  const receivedTimestampMs = pkt?.Timestamp; // ms
+  const receivedTimestampMs = pkt?.Timestamp;
   const packetHex = pkt?.Value;
   const terminalId = pkt?.TerminalId ?? null;
 
   if (typeof receivedTimestampMs !== "number") {
-    const err = new Error('Missing Packets[0].Timestamp inside Data.');
+    const err = new Error('Missing Packets[0].Timestamp.');
     err.statusCode = 400;
     throw err;
   }
   if (typeof packetHex !== "string") {
-    const err = new Error('Missing Packets[0].Value inside Data.');
+    const err = new Error('Missing Packets[0].Value.');
     err.statusCode = 400;
     throw err;
   }
@@ -109,81 +116,85 @@ function extractWebhook(body) {
   return { receivedTimestampMs, packetHex, terminalId };
 }
 
+/* ===================== EMAIL ===================== */
+
 function buildEmail({ receivedUtc, messageUtc, unpacked }) {
-  // Primera línea SIEMPRE
   const firstLine = `Horario de recepción: ${receivedUtc}`;
 
   if (unpacked.kind === "info") {
-    const subject = "aIgrOT info";
-    const lines = [
-      firstLine,
-      `Horario del mensaje: ${messageUtc}`,
-    ];
-    return { subject, html: `<p>${lines.join("<br/>")}</p>` };
+    return {
+      subject: "aIgrOT info",
+      html: `<p>${firstLine}<br/>Horario del mensaje: ${messageUtc}</p>`,
+    };
   }
 
-  // alerta
   const subject = unpacked.alert_status
     ? "aIgrOT: ALERTA bebedero sin agua"
     : "aIgrOT: bebedero con agua nuevamente";
 
-  const lines = [
-    firstLine,
-    `Horario: ${messageUtc}`,
-  ];
-
-  return { subject, html: `<p>${lines.join("<br/>")}</p>` };
+  return {
+    subject,
+    html: `<p>${firstLine}<br/>Horario: ${messageUtc}</p>`,
+  };
 }
+
+/* ===================== HANDLER ===================== */
 
 export default async function handler(req, res) {
   try {
     if (req.method !== "POST") {
       res.setHeader("Allow", "POST");
-      return res.status(405).json({ error: "Method Not Allowed. Use POST." });
+      return res.status(405).json({ error: "Method Not Allowed" });
     }
 
-    if (!process.env.RESEND_API_KEY) {
-      return res.status(500).json({ error: "Missing RESEND_API_KEY env var." });
+    if (!process.env.RESEND_API_KEY || !process.env.RESEND_API_KEY_PAPA) {
+      return res.status(500).json({ error: "Missing Resend API keys" });
     }
 
-    const { receivedTimestampMs, packetHex, terminalId } = extractWebhook(req.body);
+    const { receivedTimestampMs, packetHex, terminalId } =
+      extractWebhook(req.body);
 
     const receivedUtc = utcFromMs(receivedTimestampMs);
 
     const unpacked = unpackPacket(packetHex);
     const messageUtc = utcFromSeconds(unpacked.device_time_s);
 
-    const { subject, html } = buildEmail({ receivedUtc, messageUtc, unpacked });
+    const { subject, html } = buildEmail({
+      receivedUtc,
+      messageUtc,
+      unpacked,
+    });
 
-    // Envío
-    const [emailMain, emailPapa] = await Promise.all([
-  resend.emails.send({
-    from: "onboarding@resend.dev",
-    to: ["santosbogo@gmail.com"],
-    subject,
-    html,
-  }),
-  resendPapa.emails.send({
-    from: "onboarding@resend.dev",
-    to: ["tomasbogo@gmail.com"],
-    subject,
-    html,
-  }),
-]);
+    // Enviar a ambas cuentas
+    const [mainEmail, papaEmail] = await Promise.all([
+      resend.emails.send({
+        from: "onboarding@resend.dev",
+        to: ["santosbogo@gmail.com"],
+        subject,
+        html,
+      }),
+      resendPapa.emails.send({
+        from: "onboarding@resend.dev",
+        to: ["tomasbogo@gmail.com"],
+        subject,
+        html,
+      }),
+    ]);
 
-    // Respuesta del endpoint (incluye lo desempaquetado y el email)
     return res.status(200).json({
-  "Horario de recepción (UTC)": receivedUtc,
-  ...(terminalId ? { TerminalId: terminalId } : {}),
-  subject,
-  "Horario del mensaje (UTC)": messageUtc,
-  unpacked,
-  resend: {
-    main: emailMain,
-    papa: emailPapa,
-  },
-});
+      "Horario de recepción (UTC)": receivedUtc,
+      ...(terminalId ? { TerminalId: terminalId } : {}),
+      subject,
+      "Horario del mensaje (UTC)": messageUtc,
+      unpacked,
+      resend: {
+        main: mainEmail,
+        papa: papaEmail,
+      },
+    });
   } catch (e) {
-    return res.status(e.statusCode || 500).json({ error: e.message || "Internal error" });
+    return res
+      .status(e.statusCode || 500)
+      .json({ error: e.message || "Internal error" });
   }
 }
