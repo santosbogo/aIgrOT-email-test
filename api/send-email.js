@@ -26,7 +26,7 @@ function utcFromMs(epochMs) {
   const get = (t) => parts.find(p => p.type === t).value;
 
   // mm/hh dd/mm/aaaa
-  return `${get("minute")}/${get("hour")} ${get("day")}/${get("month")}/${get("year")}`;
+  return `${get("hour")}:${get("minute")} ${get("day")}/${get("month")}/${get("year")}`;
 }
 
 function utcFromSeconds(epochSeconds) {
