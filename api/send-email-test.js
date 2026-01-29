@@ -2,7 +2,7 @@ import { Resend } from "resend";
 
 // Resend clients (dos cuentas)
 const resend = new Resend(process.env.RESEND_API_KEY);
-const resendPapa = new Resend(process.env.RESEND_API_KEY_PAPA);
+//const resendPapa = new Resend(process.env.RESEND_API_KEY_PAPA);
 
 /* ===================== HELPERS ===================== */
 
@@ -194,12 +194,12 @@ export default async function handler(req, res) {
         subject,
         html,
       }),
-      resendPapa.emails.send({
-        from: "onboarding@resend.dev",
-        to: ["EMAIL_PAPA@DOMINIO.COM"],
-        subject,
-        html,
-      }),
+      //resendPapa.emails.send({
+        //from: "onboarding@resend.dev",
+        //to: ["tomasbogo@gmail.com"],
+        //subject,
+        //html,
+      //}),
     ]);
 
     return res.status(200).json({
@@ -210,7 +210,7 @@ export default async function handler(req, res) {
       unpacked,
       resend: {
         main: mainEmail,
-        papa: papaEmail,
+        //papa: papaEmail,
       },
     });
   } catch (e) {
