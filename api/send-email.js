@@ -12,10 +12,21 @@ function isHexString(s) {
 
 function utcFromMs(epochMs) {
   const d = new Date(epochMs);
-  const pad = (n) => String(n).padStart(2, "0");
-  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ${pad(
-    d.getUTCHours()
-  )}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())} UTC`;
+
+  const parts = new Intl.DateTimeFormat("es-AR", {
+    timeZone: "America/Argentina/Buenos_Aires",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(d);
+
+  const get = (t) => parts.find(p => p.type === t).value;
+
+  // mm/hh dd/mm/aaaa
+  return `${get("minute")}/${get("hour")} ${get("day")}/${get("month")}/${get("year")}`;
 }
 
 function utcFromSeconds(epochSeconds) {
@@ -119,12 +130,22 @@ function extractWebhook(body) {
 /* ===================== EMAIL ===================== */
 
 function buildEmail({ receivedUtc, messageUtc, unpacked }) {
-  const firstLine = `Horario de recepción: ${receivedUtc}`;
+  const firstLine = `Horario de recepción servidor: ${receivedUtc}`;
 
   if (unpacked.kind === "info") {
+    const lines = [
+      firstLine,
+      `Horario de envío: ${messageUtc}`,
+      `Latitud: ${unpacked.latitude}`,
+      `Longitud: ${unpacked.longitude}`,
+      `Elevación: ${unpacked.elevation}`,
+      `Temperatura: ${unpacked.temperature}`,
+      `Voltaje: ${unpacked.battery_voltage}`,
+    ];
+
     return {
       subject: "aIgrOT info",
-      html: `<p>${firstLine}<br/>Horario del mensaje: ${messageUtc}</p>`,
+      html: `<p>${lines.join("<br/>")}</p>`,
     };
   }
 
@@ -132,9 +153,14 @@ function buildEmail({ receivedUtc, messageUtc, unpacked }) {
     ? "aIgrOT: ALERTA bebedero sin agua"
     : "aIgrOT: bebedero con agua nuevamente";
 
+  const lines = [
+    firstLine,
+    `Horario: ${messageUtc}`,
+  ];
+
   return {
     subject,
-    html: `<p>${firstLine}<br/>Horario: ${messageUtc}</p>`,
+    html: `<p>${lines.join("<br/>")}</p>`,
   };
 }
 
@@ -151,19 +177,14 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: "Missing Resend API keys" });
     }
 
-    const { receivedTimestampMs, packetHex, terminalId } =
-      extractWebhook(req.body);
+    const { receivedTimestampMs, packetHex, terminalId } = extractWebhook(req.body);
 
     const receivedUtc = utcFromMs(receivedTimestampMs);
 
     const unpacked = unpackPacket(packetHex);
     const messageUtc = utcFromSeconds(unpacked.device_time_s);
 
-    const { subject, html } = buildEmail({
-      receivedUtc,
-      messageUtc,
-      unpacked,
-    });
+    const { subject, html } = buildEmail({ receivedUtc, messageUtc, unpacked });
 
     // Enviar a ambas cuentas
     const [mainEmail, papaEmail] = await Promise.all([
@@ -175,17 +196,17 @@ export default async function handler(req, res) {
       }),
       resendPapa.emails.send({
         from: "onboarding@resend.dev",
-        to: ["tomasbogo@gmail.com"],
+        to: ["EMAIL_PAPA@DOMINIO.COM"],
         subject,
         html,
       }),
     ]);
 
     return res.status(200).json({
-      "Horario de recepción (UTC)": receivedUtc,
+      "Horario recepcion servidor": receivedUtc,
       ...(terminalId ? { TerminalId: terminalId } : {}),
       subject,
-      "Horario del mensaje (UTC)": messageUtc,
+      "Horario de envío": messageUtc,
       unpacked,
       resend: {
         main: mainEmail,
@@ -193,8 +214,6 @@ export default async function handler(req, res) {
       },
     });
   } catch (e) {
-    return res
-      .status(e.statusCode || 500)
-      .json({ error: e.message || "Internal error" });
+    return res.status(e.statusCode || 500).json({ error: e.message || "Internal error" });
   }
 }
